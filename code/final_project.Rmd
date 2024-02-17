@@ -1,0 +1,80 @@
+---
+title: "Final Project"
+author: "Angelica Meade"
+date: "2024-04-02"
+output: html_document
+---
+
+####Step 1: Set global options and load packages
+```{r}
+library(tidyverse)
+library(readr)
+library(janitor)
+library(here)
+library(readxl)
+library(openxlsx)
+# library(purr) # need to find why purr can't be installed 
+```
+
+####Step 2: Load in and clean data
+
+```{r, warning = FALSE, message = FALSE, echo = TRUE}
+#Load in and clean ag data:
+ag_2022_all <- read_xlsx(here("data/ca_ag_raw_data_2022.xlsx")) |> # OG df
+  select(-(2:5)) |> 
+  slice(-(1:3))|> 
+  rename(county = "Commodity Data, 2022",
+         total_value = "...6") |> # rename columns
+  filter(!county %in% c("Sum of Others", 
+                        "State Total")) |> # remove unneeded rows
+  mutate_at(vars(2), as.numeric, na.rm = TRUE, # coerce to appropriate value
+            vars(1), as.character, na.rm = TRUE)
+
+ag_2022 <- ag_2022_all |> 
+  group_by(county) |> 
+  summarise(total_value = sum(total_value, na.rm = TRUE)) |> # summarise command
+  arrange(desc(total_value)) |> # arrange by value
+  slice(1:54) # slice off county rows
+
+# Missing four counties: Los Angeles, San Francisco, ______, _______
+
+county_names <- as.data.frame(unique(ag_2022$county)) 
+
+subset(county_names, 
+       !(ag_2022$county %in% county_names$CompositeCommonName))
+
+subset(fish_lh_names, 
+       !(fish_lh$species %in% fish_clean$CompositeCommonName))
+fish_lh_names <- as.data.frame(unique(fish_lh$species)) 
+```
+  
+#### Preliminary wrangling attempt:
+```{r}
+# Specify path:
+path <- "/Users/angelicameade/Desktop/ENV149/envs_149/envs_149/data/ca_ag_raw_data_2022.xlsx"
+
+# Getting data from sheets: 
+sheets <- openxlsx::getSheetNames(path) 
+ag_2022 <- lapply(sheets, 
+                     openxlsx::read.xlsx, xlsxFile = path) 
+  
+# Assigning names to data frame 
+names(ag_2022) <- sheets 
+  
+# Printing each sheet as a df:
+#ag_data_crops <- list2env(ag_2022)
+
+purrr::imap( # need to install purr package in step 1
+  .x = ag_2022, #
+  .f = function(x, y) {
+    x <- as.data.frame(x)
+    y <- paste0('', y)
+    assign(y, x, envir = globalenv())
+  } 
+) 
+
+# Clean data frames:
+ag_2022 <- lapply(ag_2022, tail, -1)
+```
+
+
