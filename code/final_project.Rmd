@@ -6,13 +6,17 @@ output: html_document
 ---
 
 ####Step 1: Set global options and load packages
-```{r}
+```{r, warning = FALSE, message = FALSE, echo = TRUE}
 library(tidyverse)
 library(readr)
 library(janitor)
 library(here)
 library(readxl)
 library(openxlsx)
+library(sf) # For dealing with geospatial data
+library(mapview) # Geospatial plot
+library(plotly)
+library(ggplot2)
 # library(purr) # need to find why purr can't be installed 
 ```
 
@@ -27,54 +31,49 @@ ag_2022_all <- read_xlsx(here("data/ca_ag_raw_data_2022.xlsx")) |> # OG df
          total_value = "...6") |> # rename columns
   filter(!county %in% c("Sum of Others", 
                         "State Total")) |> # remove unneeded rows
-  mutate_at(vars(2), as.numeric, na.rm = TRUE, # coerce to appropriate value
-            vars(1), as.character, na.rm = TRUE)
+  mutate_at(vars(2), as.numeric, na.rm = TRUE, 
+            vars(1), as.character, na.rm = TRUE) # coerce to appropriate value
 
-ag_2022 <- ag_2022_all |> 
+ag_2022 <- ag_2022_all |> # make new df with only counties 
   group_by(county) |> 
   summarise(total_value = sum(total_value, na.rm = TRUE)) |> # summarise command
   arrange(desc(total_value)) |> # arrange by value
   slice(1:54) # slice off county rows
 
-# Missing four counties: Los Angeles, San Francisco, ______, _______
+# Load in shape file data: CRS code is 4326
+counties <- st_read(here("data/CA_Counties/CA_Counties_TIGER2016.shp")) |> 
+  select(-(1:4),
+         -(6:15)) |> # remove irrevelant counties 
+  rename(county = "NAME",
+         lat = "INTPTLAT",
+         long = "INTPTLON") # rename column for join 
 
-county_names <- as.data.frame(unique(ag_2022$county)) 
+# Join ag data and shapefile data:
+ag_by_county <- full_join(ag_2022, # specify dfs to join
+                          counties, 
+                          by = "county") # specify join by column name
 
-subset(county_names, 
-       !(ag_2022$county %in% county_names$CompositeCommonName))
+# Missing four counties: Los Angeles, San Francisco, Trinity, Del Norte
 
-subset(fish_lh_names, 
-       !(fish_lh$species %in% fish_clean$CompositeCommonName))
-fish_lh_names <- as.data.frame(unique(fish_lh$species)) 
-```
-  
-#### Preliminary wrangling attempt:
-```{r}
-# Specify path:
-path <- "/Users/angelicameade/Desktop/ENV149/envs_149/envs_149/data/ca_ag_raw_data_2022.xlsx"
-
-# Getting data from sheets: 
-sheets <- openxlsx::getSheetNames(path) 
-ag_2022 <- lapply(sheets, 
-                     openxlsx::read.xlsx, xlsxFile = path) 
-  
-# Assigning names to data frame 
-names(ag_2022) <- sheets 
-  
-# Printing each sheet as a df:
-#ag_data_crops <- list2env(ag_2022)
-
-purrr::imap( # need to install purr package in step 1
-  .x = ag_2022, #
-  .f = function(x, y) {
-    x <- as.data.frame(x)
-    y <- paste0('', y)
-    assign(y, x, envir = globalenv())
-  } 
-) 
-
-# Clean data frames:
-ag_2022 <- lapply(ag_2022, tail, -1)
 ```
 
+#### Step 3: Plot Data
+```{r, fig.width = 10, fig.height = 10}
+# Plot ag data with ggplot:
+plot(ag_by_county$geometry) # check geometry of multi-polygons
+
+ggplot() +
+  geom_sf(data = ag_by_county$geometry,
+          mapping = aes(fill = ag_by_county$total_value)) # add shape file layer from geometry column
+
+# Plot ag data with plotly 
+plot_ly(ag_by_county,
+        split = ~,
+        color = ~total_value,
+        aplha = 1)
+
+
+
+```
+  
 
